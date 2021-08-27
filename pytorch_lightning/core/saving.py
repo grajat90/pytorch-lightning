@@ -14,6 +14,7 @@
 
 import ast
 import csv
+from enum import Enum
 import inspect
 import logging
 import os
@@ -376,6 +377,7 @@ def save_hparams_to_yaml(config_yaml, hparams: Union[dict, Namespace]) -> None:
             except (UnsupportedValueType, ValidationError):
                 pass
 
+    
     if not isinstance(hparams, dict):
         raise TypeError("hparams must be dictionary")
 
@@ -383,6 +385,9 @@ def save_hparams_to_yaml(config_yaml, hparams: Union[dict, Namespace]) -> None:
     # drop paramaters which contain some strange datatypes as fsspec
     for k, v in hparams.items():
         try:
+            if isinstance(v, Enum):
+                v = deepcopy(v)
+                v = v.value
             yaml.dump(v)
         except TypeError:
             warn(f"Skipping '{k}' parameter because it is not possible to safely dump to YAML.")
