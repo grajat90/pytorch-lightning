@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+from enum import Enum
 import functools
 import os
 import pickle
@@ -477,8 +478,13 @@ def test_hparams_pickle_warning(tmpdir):
 
 
 def test_hparams_save_yaml(tmpdir):
+    class Options(str, Enum):
+        option1 = "option1"
+        option2 = "option2"
+        option3 = "option3"
     hparams = dict(
-        batch_size=32, learning_rate=0.001, data_root="./any/path/here", nasted=dict(any_num=123, anystr="abcd")
+        batch_size=32, learning_rate=0.001, data_root="./any/path/here", nasted=dict(any_num=123, anystr="abcd"),
+        switch= Options.option3
     )
     path_yaml = os.path.join(tmpdir, "testing-hparams.yaml")
 
@@ -493,6 +499,7 @@ def test_hparams_save_yaml(tmpdir):
 
     save_hparams_to_yaml(path_yaml, OmegaConf.create(hparams))
     assert load_hparams_from_yaml(path_yaml) == hparams
+
 
 
 class NoArgsSubClassBoringModel(CustomBoringModel):
