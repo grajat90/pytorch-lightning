@@ -340,6 +340,22 @@ def load_hparams_from_yaml(config_yaml: str, use_omegaconf: bool = True) -> Dict
     with fs.open(config_yaml, "r") as fp:
         hparams = yaml.load(fp, Loader=yaml.UnsafeLoader)
 
+    ##Load custom enum parsed into dict back to enum
+    def dict_to_enum(dictObj: dict):
+        if dictObj.get('__type', None)=='__enum' and '__enumDefinition' in dictObj:
+            enumDefinition: dict = dictObj.get('__enumDefinition')
+            dictObjClass: Enum = Enum(
+                value = enumDefinition.get('__name'),
+                names = enumDefinition.get('__definition'),
+            )
+            return dictObjClass(dictObj.get('__selected'))
+        else:
+            return dictObj
+
+    hparams = apply_to_collection(hparams, dict, dict_to_enum)
+    for k, v in hparams.items():
+        hparams[k] = apply_to_collection(v, dict, dict_to_enum)
+
     if _OMEGACONF_AVAILABLE:
         if use_omegaconf:
             try:
@@ -349,11 +365,13 @@ def load_hparams_from_yaml(config_yaml: str, use_omegaconf: bool = True) -> Dict
     return hparams
 
 
-def save_hparams_to_yaml(config_yaml, hparams: Union[dict, Namespace]) -> None:
+def save_hparams_to_yaml(config_yaml, hparams: Union[dict, Namespace], use_omegaconf: bool = True) -> None:
     """
     Args:
         config_yaml: path to new YAML file
         hparams: parameters to be saved
+        use_omegaconf: If both `OMEGACONF_AVAILABLE` and `use_omegaconf` are True,
+                the hparams will be converted to `DictConfig` if possible
     """
     fs = get_filesystem(config_yaml)
     if not fs.isdir(os.path.dirname(config_yaml)):
@@ -365,8 +383,21 @@ def save_hparams_to_yaml(config_yaml, hparams: Union[dict, Namespace]) -> None:
     elif isinstance(hparams, AttributeDict):
         hparams = dict(hparams)
 
+    #Convert a given enum to dict type, save definition and selection
+    def enum_to_dict(enumObj: Enum = None):
+        enumObj : Dict = {
+            '__type': '__enum',
+            '__enumDefinition': {
+                '__name': enumObj.__class__.__name__,
+                '__definition': [(e.name, e.value) for e in enumObj.__class__]
+                },
+            '__selected': f'{enumObj.value}',
+        }
+        return enumObj
+
+    hparams = apply_to_collection(hparams, Enum, enum_to_dict)
     # saving with OmegaConf objects
-    if _OMEGACONF_AVAILABLE:
+    if _OMEGACONF_AVAILABLE and use_omegaconf:
         # deepcopy: hparams from user shouldn't be resolved
         hparams = deepcopy(hparams)
         hparams = apply_to_collection(hparams, DictConfig, OmegaConf.to_container, resolve=True)
@@ -385,9 +416,6 @@ def save_hparams_to_yaml(config_yaml, hparams: Union[dict, Namespace]) -> None:
     # drop paramaters which contain some strange datatypes as fsspec
     for k, v in hparams.items():
         try:
-            if isinstance(v, Enum):
-                v = deepcopy(v)
-                v = v.value
             yaml.dump(v)
         except TypeError:
             warn(f"Skipping '{k}' parameter because it is not possible to safely dump to YAML.")

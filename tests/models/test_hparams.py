@@ -13,6 +13,7 @@
 # limitations under the License.
 import copy
 from enum import Enum
+import enum
 import functools
 import os
 import pickle
@@ -21,6 +22,7 @@ from dataclasses import dataclass
 from unittest import mock
 
 import cloudpickle
+from omegaconf.dictconfig import DictConfig
 import pytest
 import torch
 from fsspec.implementations.local import LocalFileSystem
@@ -479,27 +481,39 @@ def test_hparams_pickle_warning(tmpdir):
 
 def test_hparams_save_yaml(tmpdir):
     class Options(str, Enum):
-        option1 = "option1"
-        option2 = "option2"
-        option3 = "option3"
+        option1name = "option1val"
+        option2name = "option2val"
+        option3name = "option3val"
     hparams = dict(
-        batch_size=32, learning_rate=0.001, data_root="./any/path/here", nasted=dict(any_num=123, anystr="abcd"),
-        switch= Options.option3
+        batch_size=32, learning_rate=0.001, data_root="./any/path/here", nested=dict(any_num=123, anystr="abcd"),
+        switch= Options.option3name
     )
     path_yaml = os.path.join(tmpdir, "testing-hparams.yaml")
 
+    def compare(loadedParams: dict, defaultParams: dict):
+        assert isinstance(loadedParams, (dict, DictConfig))
+        assert loadedParams.keys() == defaultParams.keys()
+        for k,v in loadedParams.items():
+            if isinstance(v, Enum):
+                assert v.name == defaultParams[k].name
+                assert v.value == defaultParams[k].value
+                loadedClass = v.__class__
+                defaultClass = defaultParams[k].__class__
+                assert [(obj1.name, obj1.value) for obj1 in loadedClass].sort() == [(obj2.name, obj2.value) for obj2 in defaultClass].sort()
+            else:
+                assert v == defaultParams[k]
+
     save_hparams_to_yaml(path_yaml, hparams)
-    assert load_hparams_from_yaml(path_yaml, use_omegaconf=False) == hparams
+    compare(load_hparams_from_yaml(path_yaml, use_omegaconf=False), hparams)
 
     save_hparams_to_yaml(path_yaml, Namespace(**hparams))
-    assert load_hparams_from_yaml(path_yaml, use_omegaconf=False) == hparams
+    compare(load_hparams_from_yaml(path_yaml, use_omegaconf=False), hparams)
 
     save_hparams_to_yaml(path_yaml, AttributeDict(hparams))
-    assert load_hparams_from_yaml(path_yaml, use_omegaconf=False) == hparams
+    compare(load_hparams_from_yaml(path_yaml, use_omegaconf=False),hparams)
 
     save_hparams_to_yaml(path_yaml, OmegaConf.create(hparams))
-    assert load_hparams_from_yaml(path_yaml) == hparams
-
+    compare(load_hparams_from_yaml(path_yaml), hparams)
 
 
 class NoArgsSubClassBoringModel(CustomBoringModel):
